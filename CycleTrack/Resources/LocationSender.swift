@@ -39,22 +39,19 @@ private struct FirestoreClient: DBClient {
         }
     }
 }
-#else
+#endif
+
 private struct NoOpClient: DBClient {
     func setLocation(riderId: String, latitude: Double, longitude: Double, timestamp: Any, completion: @escaping (Error?) -> Void) {
         completion(nil)
     }
 }
-#endif
 
 final class LocationSender: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private var timer: Timer?
-#if canImport(FirebaseFirestore)
-    private let dbClient: DBClient = FirestoreClient()
-#else
-    private let dbClient: DBClient = NoOpClient()
-#endif
+    private let dbClient: DBClient
+    private let isPreview: Bool
 
     @Published var isSending = false
     @Published var statusMessage: String?
@@ -83,12 +80,19 @@ final class LocationSender: NSObject, ObservableObject, CLLocationManagerDelegat
         return UIDevice.current.identifierForVendor?.uuidString ?? "unknown"
     }
 
-    override init() {
+    init(preview: Bool = false) {
+        isPreview = preview
+        #if canImport(FirebaseFirestore)
+        dbClient = preview ? NoOpClient() : FirestoreClient()
+        #else
+        dbClient = NoOpClient()
+        #endif
+
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
         manager.pausesLocationUpdatesAutomatically = true
-        authorizationStatus = manager.authorizationStatus
+        authorizationStatus = preview ? .authorizedWhenInUse : manager.authorizationStatus
     }
 
     private func requestWhenInUseAuthorizationOnMain() {
@@ -118,6 +122,12 @@ final class LocationSender: NSObject, ObservableObject, CLLocationManagerDelegat
     }
 
     func start() {
+        if isPreview {
+            isSending = true
+            statusMessage = "Preview: sending every 10s."
+            return
+        }
+
         switch manager.authorizationStatus {
         case .notDetermined:
             requestWhenInUseAuthorizationOnMain()
@@ -162,7 +172,9 @@ final class LocationSender: NSObject, ObservableObject, CLLocationManagerDelegat
         isSending = false
         timer?.invalidate()
         timer = nil
-        manager.stopUpdatingLocation()
+        if !isPreview {
+            manager.stopUpdatingLocation()
+        }
         statusMessage = "Stopped sending."
     }
 

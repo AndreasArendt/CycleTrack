@@ -29,7 +29,15 @@ final class AuthenticationService: ObservableObject {
     private var authStateHandle: AuthStateDidChangeListenerHandle?
     #endif
 
-    init() {
+    init(previewUserId: String? = nil) {
+        if let previewUserId {
+            userId = previewUserId
+            isSignedIn = true
+            providerName = "Anonymous"
+            statusMessage = "Signed in anonymously."
+            return
+        }
+
         #if canImport(FirebaseAuth)
         authStateHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             DispatchQueue.main.async {
