@@ -8,15 +8,31 @@
 
 /* Begin PBXBuildFile section */
 		F413E7212FE6EF12004409EB /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = F413E7202FE6EF12004409EB /* FirebaseAnalytics */; };
+		F413E7282FE6F42E004409EB /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = F413E7272FE6F42E004409EB /* FirebaseAuth */; };
+		F413E72A2FE6F42E004409EB /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = F413E7292FE6F42E004409EB /* FirebaseCore */; };
+		F413E72C2FE6F42E004409EB /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = F413E72B2FE6F42E004409EB /* FirebaseFirestore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		F413E6FD2FE6DA8F004409EB /* CycleTrack.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CycleTrack.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		F413E72E2FE6F790004409EB /* Exceptions for "CycleTrack" folder in "CycleTrack" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = F413E6FC2FE6DA8F004409EB /* CycleTrack */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		F413E6FF2FE6DA8F004409EB /* CycleTrack */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				F413E72E2FE6F790004409EB /* Exceptions for "CycleTrack" folder in "CycleTrack" target */,
+			);
 			path = CycleTrack;
 			sourceTree = "<group>";
 		};
@@ -28,6 +44,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				F413E7212FE6EF12004409EB /* FirebaseAnalytics in Frameworks */,
+				F413E72C2FE6F42E004409EB /* FirebaseFirestore in Frameworks */,
+				F413E72A2FE6F42E004409EB /* FirebaseCore in Frameworks */,
+				F413E7282FE6F42E004409EB /* FirebaseAuth in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -38,6 +57,7 @@
 			isa = PBXGroup;
 			children = (
 				F413E6FF2FE6DA8F004409EB /* CycleTrack */,
+				F413E7262FE6F42E004409EB /* Frameworks */,
 				F413E6FE2FE6DA8F004409EB /* Products */,
 			);
 			sourceTree = "<group>";
@@ -48,6 +68,13 @@
 				F413E6FD2FE6DA8F004409EB /* CycleTrack.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		F413E7262FE6F42E004409EB /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -71,6 +98,9 @@
 			name = CycleTrack;
 			packageProductDependencies = (
 				F413E7202FE6EF12004409EB /* FirebaseAnalytics */,
+				F413E7272FE6F42E004409EB /* FirebaseAuth */,
+				F413E7292FE6F42E004409EB /* FirebaseCore */,
+				F413E72B2FE6F42E004409EB /* FirebaseFirestore */,
 			);
 			productName = CycleTrack;
 			productReference = F413E6FD2FE6DA8F004409EB /* CycleTrack.app */;
@@ -265,6 +295,10 @@
 				DEVELOPMENT_TEAM = 7DHCTWZFJJ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CycleTrack/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "CycleTrack uses your location to record rides while tracking is active.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "CycleTrack uses your location to record rides while tracking is active.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -297,6 +331,10 @@
 				DEVELOPMENT_TEAM = 7DHCTWZFJJ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CycleTrack/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "CycleTrack uses your location to record rides while tracking is active.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "CycleTrack uses your location to record rides while tracking is active.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -358,6 +396,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F413E71F2FE6EF12004409EB /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseAnalytics;
+		};
+		F413E7272FE6F42E004409EB /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F413E71F2FE6EF12004409EB /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		F413E7292FE6F42E004409EB /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F413E71F2FE6EF12004409EB /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		F413E72B2FE6F42E004409EB /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F413E71F2FE6EF12004409EB /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

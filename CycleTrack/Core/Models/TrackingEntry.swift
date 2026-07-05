@@ -6,36 +6,31 @@
 //
 
 import Foundation
-import CoreLocation
 
+// Minimal model to create and encode a dummy entry into Firestore
 struct TrackingEntry: Codable, Identifiable {
     let id: String
     let riderId: String
 
+    // Keep only a minimal status field for now
     var status: RideStatus
-    var sharingMode: SharingMode
 
-    var lastLocation: TrackedLocation?
-    var batteryLevel: Double?
-
-    var startedAt: Date
-    var endedAt: Date?
+    // Timestamps helpful for sorting/queries
+    var createdAt: Date
     var updatedAt: Date
 
-    var viewerActiveUntil: Date?
-    var lastViewedAt: Date?
+    // Factory for a dummy entry
+    static func dummy(riderId: String = "dummy-rider", now: Date = Date()) -> TrackingEntry {
+        return TrackingEntry(
+            id: UUID().uuidString,
+            riderId: riderId,
+            status: .idle,
+            createdAt: now,
+            updatedAt: now
+        )
+    }
 }
 
 enum RideStatus: String, Codable {
     case idle
-    case riding
-    case paused
-    case ended
-    case sos
-}
-
-enum SharingMode: String, Codable {
-    case live        // viewer active
-    case passive     // nobody watching
-    case safetyOnly  // long inactivity
 }
