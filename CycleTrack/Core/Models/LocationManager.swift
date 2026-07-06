@@ -7,12 +7,17 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     private let locationRepository: LocationRepository
     private let isPreview: Bool
     private var sendTimer: Timer?
+    private var durationTimer: Timer?
+    private var trackingStartedAt: Date?
+    private var accumulatedTrackingSeconds: TimeInterval = 0
     private var shouldStartSendingAfterAuthorization = false
 
     @Published var currentLocation: CLLocation?
     @Published var hasGPSFix = false
     @Published var horizontalAccuracy: CLLocationAccuracy?
     @Published var isSending = false
+    @Published var isPaused = false
+    @Published var elapsedTrackingSeconds: TimeInterval = 0
     @Published var statusMessage: String?
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
     @Published var allowsBackgroundUpdates = false {
@@ -24,6 +29,18 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
                 requestAlwaysAuthorizationIfNeeded()
             }
         }
+    }
+
+    var currentSpeedText: String {
+        guard let speed = currentLocation?.speed, speed >= 0 else {
+            return "--"
+        }
+
+        return String(format: "%.1f", speed * 3.6)
+    }
+
+    var trackingDurationText: String {
+        Self.formatDuration(elapsedTrackingSeconds)
     }
 
     init(preview: Bool = false, locationRepository: LocationRepository? = nil) {
@@ -40,6 +57,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
     deinit {
         sendTimer?.invalidate()
+        durationTimer?.invalidate()
     }
 
     func requestLocationAuthorization() {
@@ -61,6 +79,8 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     func startSending() {
         if isPreview {
             isSending = true
+            isPaused = false
+            startDurationTimer()
             statusMessage = "Preview: sending every 10s."
             return
         }
@@ -85,14 +105,58 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     func stopSending() {
         shouldStartSendingAfterAuthorization = false
         isSending = false
+        isPaused = false
         sendTimer?.invalidate()
         sendTimer = nil
+        resetDurationTimer()
 
         if !isPreview {
             manager.stopUpdatingLocation()
         }
 
         statusMessage = "Stopped sending."
+    }
+
+    func pauseSending() {
+        guard isSending, !isPaused else { return }
+
+        isPaused = true
+        isSending = false
+        sendTimer?.invalidate()
+        sendTimer = nil
+        pauseDurationTimer()
+
+        if !isPreview {
+            manager.stopUpdatingLocation()
+        }
+
+        statusMessage = "Paused."
+    }
+
+    func resumeSending() {
+        guard isPaused else { return }
+
+        if isPreview {
+            isPaused = false
+            isSending = true
+            startDurationTimer()
+            statusMessage = "Preview: sending every 10s."
+            return
+        }
+
+        switch manager.authorizationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            isPaused = false
+            beginSending()
+        case .notDetermined:
+            shouldStartSendingAfterAuthorization = true
+            requestWhenInUseAuthorizationOnMain()
+            statusMessage = "Requesting location permission..."
+        case .denied, .restricted:
+            statusMessage = "Location permission denied. Enable it in Settings."
+        @unknown default:
+            statusMessage = "Unknown authorization status."
+        }
     }
 
     private func beginSending() {
@@ -111,6 +175,8 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         }
 
         isSending = true
+        isPaused = false
+        startDurationTimer()
         statusMessage = "Started sending every 10s."
         sendTimer?.invalidate()
         sendTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
@@ -147,6 +213,43 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         currentLocation = location
         horizontalAccuracy = location.horizontalAccuracy
         hasGPSFix = location.horizontalAccuracy > 0 && location.horizontalAccuracy < 20
+    }
+
+    private func startDurationTimer() {
+        guard trackingStartedAt == nil else { return }
+
+        trackingStartedAt = Date()
+        elapsedTrackingSeconds = accumulatedTrackingSeconds
+        durationTimer?.invalidate()
+        durationTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            self?.updateElapsedTrackingSeconds()
+        }
+
+        if let durationTimer {
+            RunLoop.main.add(durationTimer, forMode: .common)
+        }
+    }
+
+    private func pauseDurationTimer() {
+        updateElapsedTrackingSeconds()
+        durationTimer?.invalidate()
+        durationTimer = nil
+        accumulatedTrackingSeconds = elapsedTrackingSeconds
+        trackingStartedAt = nil
+    }
+
+    private func resetDurationTimer() {
+        durationTimer?.invalidate()
+        durationTimer = nil
+        trackingStartedAt = nil
+        accumulatedTrackingSeconds = 0
+        elapsedTrackingSeconds = 0
+    }
+
+    private func updateElapsedTrackingSeconds() {
+        guard let trackingStartedAt else { return }
+
+        elapsedTrackingSeconds = accumulatedTrackingSeconds + Date().timeIntervalSince(trackingStartedAt)
     }
 
     private func updateBackgroundLocationUpdates() {
@@ -219,5 +322,18 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         statusMessage = "Location error: \(error.localizedDescription)"
+    }
+
+    private static func formatDuration(_ seconds: TimeInterval) -> String {
+        let totalSeconds = max(0, Int(seconds.rounded(.down)))
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 }

@@ -32,17 +32,15 @@ struct TrackingControlView: View {
             .mapScope(mapScope)
 
             VStack(spacing: 0) {
-                HStack {
-                    Spacer()
-
-                    //menuButton
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
+//                HStack {
+//                    Spacer()
+//                    menuButton
+//                    locationButton
+//                }
+//                .padding(.horizontal, 16)
+//                .padding(.top, 12)
 
                 Spacer()
-
-                locationButton
 
                 LiveTrackingIslandView(locationManager: locationManager)
                     .padding(.horizontal, 16)
@@ -77,49 +75,12 @@ struct TrackingControlView: View {
         .padding(.horizontal, 20)
         .padding(.bottom, 12)
     }
-    
-    private var menuButton: some View {
-        Menu {
-            Label(auth.providerName, systemImage: "person.crop.circle")
-
-            if let userId = auth.userId {
-                Label("Rider \(userId.prefix(8))", systemImage: "number")
-            }
-
-            Button {
-                writeDummyEntry()
-            } label: {
-                Label("Write Test Entry", systemImage: "square.and.pencil")
-            }
-            .disabled(isWritingDummyEntry)
-
-            Divider()
-
-            Button(role: .destructive) {
-                signOut()
-            } label: {
-                Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-            }
-        } label: {
-            Image(systemName: "line.3.horizontal")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 44, height: 44)
-                .background(.thinMaterial, in: Circle())
-                .overlay {
-                    Circle()
-                        .stroke(.white.opacity(0.22), lineWidth: 1)
-                }
-                .shadow(color: .black.opacity(0.14), radius: 10, y: 4)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Open menu")
-    }
-    
+        
     struct LiveTrackingIslandView: View {
         @State private var isExpanded: Bool = false
-
+        @State private var trackingManager = TrackingManager()
+        @State private var stopSliderOffset: CGFloat = 0
+        
         @ObservedObject var locationManager: LocationManager
         
         private let actions = [
@@ -146,7 +107,7 @@ struct TrackingControlView: View {
                         Text("Live Tracking")
                             .font(.headline)
 
-                        Text(locationManager.isSending ? "Sharing location" : "Ready to share")
+                        Text(trackingStatusText)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -155,17 +116,19 @@ struct TrackingControlView: View {
 
                     Button {
                         if locationManager.isSending {
-                            stopTracking()
+                            pauseTracking()
+                        } else if locationManager.isPaused {
+                            resumeTracking()
                         } else {
                             startTracking()
                         }
                     } label: {
-                        Image(systemName: locationManager.isSending ? "stop.fill" : "play.fill")
+                        Image(systemName: primaryControlImage)
                             .font(.title3)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .tint(locationManager.isSending ? .red : .green)
+                    .tint(primaryControlTint)
                 }
 
                 if isExpanded {
@@ -202,13 +165,9 @@ struct TrackingControlView: View {
 
         private var expandedContent: some View {
             VStack(spacing: 16) {
-                HStack(spacing: 10) {
-                    RideMetricView(title: "Duration", value: "00:00")
-                    RideMetricView(title: "Speed", value: "0.0")
-                    RideMetricView(title: "Watching", value: "0")
-                }
-
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: actions.count), spacing: 10) {
+                watcherSection
+                
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
                     ForEach(actions) { action in
                         Button {
                         } label: {
@@ -224,6 +183,7 @@ struct TrackingControlView: View {
                                     .minimumScaleFactor(0.8)
                             }
                             .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
                         }
                         .buttonStyle(.plain)
                     }
@@ -239,11 +199,174 @@ struct TrackingControlView: View {
                         .foregroundStyle(locationManager.hasGPSFix ? .green : .secondary)
                 }
                 .font(.caption)
+
+                if locationManager.isSending || locationManager.isPaused {
+                    slideToStopControl
+                }
+            }
+        }
+
+        private var trackingStatusText: String {
+            if locationManager.isSending {
+                return "Sharing for \(locationManager.trackingDurationText)"
+            }
+
+            if locationManager.isPaused {
+                return "Paused at \(locationManager.trackingDurationText)"
+            }
+
+            return "Ready to share"
+        }
+
+        private var primaryControlImage: String {
+            if locationManager.isSending {
+                return "pause.fill"
+            }
+
+            return "play.fill"
+        }
+
+        private var primaryControlTint: Color {
+            if locationManager.isSending {
+                return .orange
+            }
+
+            return .green
+        }
+
+        private var slideToStopControl: some View {
+            GeometryReader { proxy in
+                let knobSize: CGFloat = 44
+                let maxOffset = max(0, proxy.size.width - knobSize - 8)
+
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(.red.opacity(0.12))
+
+                    Text("Slide to stop sharing")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity)
+
+                    Circle()
+                        .fill(.red)
+                        .frame(width: knobSize, height: knobSize)
+                        .overlay {
+                            Image(systemName: "stop.fill")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white)
+                        }
+                        .offset(x: stopSliderOffset)
+                        .gesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    stopSliderOffset = min(max(0, value.translation.width), maxOffset)
+                                }
+                                .onEnded { _ in
+                                    if stopSliderOffset > maxOffset * 0.72 {
+                                        stopTracking()
+                                    }
+
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
+                                        stopSliderOffset = 0
+                                    }
+                                }
+                        )
+                }
+            }
+            .frame(height: 52)
+        }
+
+        private var watcherSection: some View {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Label("Watchers", systemImage: "person.and.person")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Text("\(activeWatcherCount) active")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                if trackingManager.watchers.isEmpty {
+                    HStack(spacing: 10) {
+                        Image(systemName: "person.crop.circle.badge.plus")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 34, height: 34)
+                            .background(.thinMaterial, in: Circle())
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("No watchers yet")
+                                .font(.subheadline.weight(.semibold))
+
+                            Text("Share your live link to invite people.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+                    }
+                    .padding(12)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(trackingManager.watchers.prefix(3)) { watcher in
+                            watcherRow(watcher)
+                        }
+                    }
+                    .padding(10)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+            }
+        }
+
+        private var activeWatcherCount: Int {
+            trackingManager.watchers.filter(\.isActive).count
+        }
+
+        private func watcherRow(_ watcher: Watcher) -> some View {
+            HStack(spacing: 10) {
+                Group {
+                    if let image = watcher.image {
+                        Image(image)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Image(systemName: "person.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(width: 30, height: 30)
+                .background(.thinMaterial, in: Circle())
+                .clipShape(Circle())
+
+                Text(watcher.name)
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
+
+                Spacer()
+
+                Circle()
+                    .fill(watcher.isActive ? .green : .secondary.opacity(0.35))
+                    .frame(width: 8, height: 8)
             }
         }
         
         private func startTracking() {
             locationManager.startSending()
+        }
+
+        private func pauseTracking() {
+            locationManager.pauseSending()
+        }
+
+        private func resumeTracking() {
+            locationManager.resumeSending()
         }
         
         private func stopTracking() {
@@ -258,30 +381,6 @@ struct TrackingControlView: View {
         }
     }
 
-    private struct RideMetricView: View {
-        let title: String
-        let value: String
-
-        var body: some View {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-
-                Text(value)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-    }
-    
-    
-    
     private func signOut() {
         do {
             try auth.signOut()
