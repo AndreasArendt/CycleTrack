@@ -6,10 +6,13 @@ struct TrackingControlView: View {
     @State private var isSigningIn = false
     @State private var isWritingDummyEntry = false
     @State private var dummyWriteMessage: String?
+    @State private var isAddingActivity = false
+    @State private var activityIdToWatch = ""
     private let userPresenceRepository = UserPresenceRepository()
     
     @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
     @StateObject private var locationManager = LocationManager()
+    @StateObject private var activityWatchManager = ActivityWatchManager()
     
     @Namespace private var mapScope
     
@@ -25,6 +28,13 @@ struct TrackingControlView: View {
         ZStack {
             Map(position: $cameraPosition, scope: mapScope) {
                 UserAnnotation()
+
+                ForEach(activityWatchManager.watchedActivities) { activity in
+                    if let coordinate = activity.coordinate {
+                        Marker("Rider", systemImage: "figure.outdoor.cycle", coordinate: coordinate)
+                            .tint(activity.status == "live" ? .green : .orange)
+                    }
+                }
             }
             .mapControls {
                 MapCompass()
@@ -43,7 +53,13 @@ struct TrackingControlView: View {
 
                 Spacer()
 
-                LiveTrackingIslandView(locationManager: locationManager)
+                LiveTrackingIslandView(
+                    locationManager: locationManager,
+                    watchedActivities: activityWatchManager.watchedActivities,
+                    watchingStatusMessage: activityWatchManager.statusMessage
+                ) {
+                    isAddingActivity = true
+                }
                     .padding(.horizontal, 16)
                     .padding(.bottom, 16)
             }
@@ -51,6 +67,20 @@ struct TrackingControlView: View {
         .onAppear {
             userPresenceRepository.setCurrentUserActive(true)
             locationManager.requestLocationAuthorization()
+        }
+        .alert("Add Activity", isPresented: $isAddingActivity) {
+            TextField("Invitation Token", text: $activityIdToWatch)
+
+            Button("Cancel", role: .cancel) {
+                activityIdToWatch = ""
+            }
+
+            Button("Watch") {
+                activityWatchManager.watchActivity(id: activityIdToWatch)
+                activityIdToWatch = ""
+            }
+        } message: {
+            Text("Paste a shared invitation token to see that rider on your map.")
         }
     }
 

@@ -21,18 +21,38 @@ struct TrackingAction: Identifiable {
 }
 
 struct LiveTrackingIslandView: View {
+    private enum IslandPage {
+        case myTracking
+        case watchingOthers
+    }
+
     @State private var isExpanded: Bool = false
     @State private var isSharingPresented: Bool = false
-    @State private var trackingManager = TrackingManager()
+    @State private var selectedPage: IslandPage = .myTracking
+    @StateObject private var trackingManager = TrackingManager()
     @State private var stopSliderOffset: CGFloat = 0
     
     @ObservedObject var locationManager: LocationManager
+    let watchedActivities: [WatchedActivity]
+    let watchingStatusMessage: String?
+    let onAddActivity: () -> Void
     
     private let actions = [
         TrackingAction(title: "Share", systemImage: "square.and.arrow.up"),
-        TrackingAction(title: "Add Rider", systemImage: "figure.outdoor.cycle"),
         TrackingAction(title: "Settings", systemImage: "gearshape"),
     ]
+
+    init(
+        locationManager: LocationManager,
+        watchedActivities: [WatchedActivity] = [],
+        watchingStatusMessage: String? = nil,
+        onAddActivity: @escaping () -> Void = {}
+    ) {
+        self.locationManager = locationManager
+        self.watchedActivities = watchedActivities
+        self.watchingStatusMessage = watchingStatusMessage
+        self.onAddActivity = onAddActivity
+    }
 
     var body: some View {
         VStack(spacing: 14) {
@@ -41,38 +61,52 @@ struct LiveTrackingIslandView: View {
                 .frame(width: 38, height: 5)
                 .padding(.top, 4)
 
+            pageSwitcher
+
             HStack(spacing: 12) {
-                Image(systemName: "location.fill")
-                    .foregroundStyle(.green)
+                Image(systemName: selectedPage == .myTracking ? "location.fill" : "figure.outdoor.cycle")
+                    .foregroundStyle(selectedPage == .myTracking ? .green : .blue)
                     .frame(width: 32, height: 32)
-                    .background(.green.opacity(0.14), in: Circle())
+                    .background((selectedPage == .myTracking ? Color.green : Color.blue).opacity(0.14), in: Circle())
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Live Tracking")
+                    Text(selectedPage == .myTracking ? "Live Tracking" : "Tracking Others")
                         .font(.headline)
 
-                    Text(trackingStatusText)
+                    Text(selectedPage == .myTracking ? trackingStatusText : watchingStatusText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
                 Spacer()
 
-                Button {
-                    if locationManager.isSending {
-                        pauseTracking()
-                    } else if locationManager.isPaused {
-                        resumeTracking()
-                    } else {
-                        startTracking()
+                if selectedPage == .myTracking {
+                    Button {
+                        if locationManager.isSending {
+                            pauseTracking()
+                        } else if locationManager.isPaused {
+                            resumeTracking()
+                        } else {
+                            startTracking()
+                        }
+                    } label: {
+                        Image(systemName: primaryControlImage)
+                            .font(.title3)
                     }
-                } label: {
-                    Image(systemName: primaryControlImage)
-                        .font(.title3)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .tint(primaryControlTint)
+                } else {
+                    Button {
+                        onAddActivity()
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.title3)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .tint(.blue)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(primaryControlTint)
             }
 
             if isExpanded {
@@ -105,11 +139,43 @@ struct LiveTrackingIslandView: View {
                 }
         )
         .animation(.spring(response: 0.34, dampingFraction: 0.86), value: isExpanded)
+        .onAppear {
+            trackingManager.observeWatchers(activityId: locationManager.currentActivityId)
+        }
+        .onChange(of: locationManager.currentActivityId) { _, activityId in
+            trackingManager.observeWatchers(activityId: activityId)
+        }
     }
 
     private var expandedContent: some View {
+        Group {
+            if selectedPage == .myTracking {
+                myTrackingContent
+            } else {
+                watchingOthersContent
+            }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 18)
+                .onEnded { value in
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                        if value.translation.width < -40 {
+                            selectedPage = .watchingOthers
+                        } else if value.translation.width > 40 {
+                            selectedPage = .myTracking
+                        }
+                    }
+                }
+        )
+    }
+
+    private var myTrackingContent: some View {
         VStack(spacing: 16) {
-            WatcherSectionView(watchers: trackingManager.watchers)
+            WatcherSectionView(watchers: trackingManager.watchers) { watcher in
+                trackingManager.removeWatcher(watcher)
+            }
             
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: actions.count), spacing: 10) {
                 ForEach(actions) { action in
@@ -120,7 +186,7 @@ struct LiveTrackingIslandView: View {
             }
 
             if isSharingPresented {
-                SharingView()
+                SharingView(activityId: locationManager.currentActivityId)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
 
@@ -143,6 +209,52 @@ struct LiveTrackingIslandView: View {
         }
     }
 
+    private var watchingOthersContent: some View {
+        VStack(spacing: 16) {
+            WatchingOthersSectionView(
+                watchedActivities: watchedActivities,
+                statusMessage: watchingStatusMessage,
+                onAddActivity: onAddActivity
+            )
+
+            HStack {
+                Label("More", systemImage: "ellipsis.circle")
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Text("Coming soon")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.caption)
+        }
+    }
+
+    private var pageSwitcher: some View {
+        HStack(spacing: 6) {
+            pageButton(page: .myTracking, systemImage: "location.fill")
+            pageButton(page: .watchingOthers, systemImage: "figure.outdoor.cycle")
+        }
+        .padding(4)
+        .background(.thinMaterial, in: Capsule())
+    }
+
+    private func pageButton(page: IslandPage, systemImage: String) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                selectedPage = page
+                isExpanded = true
+            }
+        } label: {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(selectedPage == page ? .white : .secondary)
+                .frame(width: 34, height: 26)
+                .background(selectedPage == page ? Color.accentColor : Color.clear, in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
     private var trackingStatusText: String {
         if locationManager.isSending {
             return "Sharing for \(locationManager.trackingDurationText)"
@@ -153,6 +265,16 @@ struct LiveTrackingIslandView: View {
         }
 
         return "Ready to share"
+    }
+
+    private var watchingStatusText: String {
+        let count = watchedActivities.count
+
+        if count == 1 {
+            return "Watching 1 rider"
+        }
+
+        return "Watching \(count) riders"
     }
 
     private var primaryControlImage: String {
@@ -196,6 +318,102 @@ struct LiveTrackingIslandView: View {
         locationManager.stopSending()
     }
 
+}
+
+private struct WatchingOthersSectionView: View {
+    let watchedActivities: [WatchedActivity]
+    let statusMessage: String?
+    let onAddActivity: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Riders I Track", systemImage: "map")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Button {
+                    onAddActivity()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.caption.weight(.bold))
+                        .frame(width: 28, height: 28)
+                        .background(.blue, in: Circle())
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if watchedActivities.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "figure.outdoor.cycle")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 34, height: 34)
+                        .background(.thinMaterial, in: Circle())
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("No riders yet")
+                            .font(.subheadline.weight(.semibold))
+
+                        Text("Add an invitation token to start tracking.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+                }
+                .padding(12)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(watchedActivities) { activity in
+                        watchedActivityRow(activity)
+                    }
+                }
+                .padding(10)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+
+            if let statusMessage {
+                Text(statusMessage)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+    }
+
+    private func watchedActivityRow(_ activity: WatchedActivity) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "figure.outdoor.cycle")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(activity.status == "live" ? .green : .secondary)
+                .frame(width: 30, height: 30)
+                .background(.thinMaterial, in: Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(activity.ownerUid ?? activity.id)
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
+
+                Text(activity.id)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            Spacer()
+
+            Text(activity.status.capitalized)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(activity.status == "live" ? .green : .secondary)
+        }
+        .frame(height: 42)
+    }
 }
 
 #Preview {

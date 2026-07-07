@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WatcherSectionView: View {
     let watchers: [Watcher]
+    let onRemoveWatcher: (Watcher) -> Void
 
     private let watcherRowHeight: CGFloat = 38
     private let maxVisibleWatcherRows = 3
@@ -45,7 +46,9 @@ struct WatcherSectionView: View {
                 ScrollView(.vertical) {
                     LazyVStack(spacing: 8) {
                         ForEach(watchers) { watcher in
-                            watcherRow(watcher)
+                            SwipeToRemoveWatcherRow(watcher: watcher) {
+                                onRemoveWatcher(watcher)
+                            }
                                 .frame(height: watcherRowHeight)
                         }
                     }
@@ -70,7 +73,53 @@ struct WatcherSectionView: View {
         watchers.filter(\.isActive).count
     }
 
-    private func watcherRow(_ watcher: Watcher) -> some View {
+}
+
+private struct SwipeToRemoveWatcherRow: View {
+    let watcher: Watcher
+    let onRemove: () -> Void
+
+    @State private var offset: CGFloat = 0
+
+    private let removeWidth: CGFloat = 76
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            Button(role: .destructive) {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                    onRemove()
+                }
+            } label: {
+                Image(systemName: "trash.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: removeWidth, height: 38)
+                    .background(.red, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
+            watcherRow
+                .padding(.horizontal, 10)
+                .frame(height: 38)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .offset(x: offset)
+                .gesture(
+                    DragGesture(minimumDistance: 12)
+                        .onChanged { value in
+                            offset = max(-removeWidth, min(0, value.translation.width))
+                        }
+                        .onEnded { value in
+                            let shouldReveal = value.translation.width < -34 || value.predictedEndTranslation.width < -70
+
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                                offset = shouldReveal ? -removeWidth : 0
+                            }
+                        }
+                )
+        }
+        .clipped()
+    }
+
+    private var watcherRow: some View {
         HStack(spacing: 10) {
             Group {
                 if let image = watcher.image {

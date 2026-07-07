@@ -4,15 +4,17 @@ import Foundation
 
 final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
-    private let locationRepository: LocationRepository
+    private let activityRepository: ActivityRepository
     private let isPreview: Bool
     private var sendTimer: Timer?
     private var durationTimer: Timer?
     private var trackingStartedAt: Date?
     private var accumulatedTrackingSeconds: TimeInterval = 0
     private var shouldStartSendingAfterAuthorization = false
+    private var isCreatingActivity = false
 
     @Published var currentLocation: CLLocation?
+    @Published var currentActivityId: String?
     @Published var hasGPSFix = false
     @Published var horizontalAccuracy: CLLocationAccuracy?
     @Published var isSending = false
@@ -43,9 +45,9 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         Self.formatDuration(elapsedTrackingSeconds)
     }
 
-    init(preview: Bool = false, locationRepository: LocationRepository? = nil) {
+    init(preview: Bool = false, activityRepository: ActivityRepository? = nil) {
         isPreview = preview
-        self.locationRepository = locationRepository ?? LocationRepository(preview: preview)
+        self.activityRepository = activityRepository ?? ActivityRepository(preview: preview)
 
         super.init()
 
@@ -78,6 +80,10 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
     func startSending() {
         if isPreview {
+            if currentActivityId == nil {
+                currentActivityId = UUID().uuidString
+            }
+
             isSending = true
             isPaused = false
             startDurationTimer()
@@ -93,7 +99,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         case .denied, .restricted:
             statusMessage = "Location permission denied. Enable it in Settings."
         case .authorizedWhenInUse, .authorizedAlways:
-            beginSending()
+            createActivityAndBeginSending()
             if allowsBackgroundUpdates {
                 requestAlwaysAuthorizationIfNeeded()
             }
@@ -108,10 +114,16 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         isPaused = false
         sendTimer?.invalidate()
         sendTimer = nil
+        let activityId = currentActivityId
+        currentActivityId = nil
         resetDurationTimer()
 
         if !isPreview {
             manager.stopUpdatingLocation()
+        }
+
+        if let activityId {
+            activityRepository.updateActivityStatus(activityId: activityId, status: .ended)
         }
 
         statusMessage = "Stopped sending."
@@ -128,6 +140,10 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
         if !isPreview {
             manager.stopUpdatingLocation()
+        }
+
+        if let currentActivityId {
+            activityRepository.updateActivityStatus(activityId: currentActivityId, status: .paused)
         }
 
         statusMessage = "Paused."
@@ -147,6 +163,9 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         switch manager.authorizationStatus {
         case .authorizedWhenInUse, .authorizedAlways:
             isPaused = false
+            if let currentActivityId {
+                activityRepository.updateActivityStatus(activityId: currentActivityId, status: .live)
+            }
             beginSending()
         case .notDetermined:
             shouldStartSendingAfterAuthorization = true
@@ -188,6 +207,35 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         }
     }
 
+    private func createActivityAndBeginSending() {
+        guard currentActivityId == nil else {
+            beginSending()
+            return
+        }
+
+        guard !isCreatingActivity else { return }
+
+        isCreatingActivity = true
+        statusMessage = "Creating live activity..."
+
+        activityRepository.createLiveActivity { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+
+                self.isCreatingActivity = false
+
+                switch result {
+                case .success(let activityId):
+                    self.currentActivityId = activityId
+                    self.beginSending()
+                    self.statusMessage = "Live activity started."
+                case .failure(let error):
+                    self.statusMessage = "Failed to start activity: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
     private func sendCurrentLocation() {
         guard let currentLocation else {
             statusMessage = "No location available yet."
@@ -198,7 +246,12 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     }
 
     private func sendLocation(_ location: CLLocation) {
-        locationRepository.saveCurrentRiderLocation(location) { [weak self] error in
+        guard let currentActivityId else {
+            statusMessage = "No live activity available."
+            return
+        }
+
+        activityRepository.updateLiveActivityLocation(activityId: currentActivityId, location: location) { [weak self] error in
             DispatchQueue.main.async {
                 if let error {
                     self?.statusMessage = "Failed to send: \(error.localizedDescription)"
@@ -291,7 +344,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         case .authorizedWhenInUse, .authorizedAlways:
             if shouldStartSendingAfterAuthorization {
                 shouldStartSendingAfterAuthorization = false
-                beginSending()
+                createActivityAndBeginSending()
             } else if isSending {
                 manager.startUpdatingLocation()
             }
