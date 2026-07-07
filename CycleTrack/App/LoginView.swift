@@ -20,7 +20,7 @@ struct LoginView: View {
         VStack(spacing: 28) {
             Spacer()
 
-            Image(systemName: "bicycle.circle")
+            Image(systemName: "figure.outdoor.cycle")
                 .font(.system(size: 64))
                 .foregroundStyle(.green)
 
