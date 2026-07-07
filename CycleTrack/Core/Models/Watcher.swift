@@ -9,15 +9,15 @@ import SwiftUI
 
 @Observable
 class Watcher : Identifiable {
-    var id: UUID
+    var id: String
     var name: String
     var isActive: Bool
     var image: ImageResource?
     
-    init(name: String) {
-        self.id = UUID()
+    init(id: String = UUID().uuidString, name: String, isActive: Bool = false) {
+        self.id = id
         self.name = name
-        self.isActive = false
+        self.isActive = isActive
         self.image = nil
     }
 }

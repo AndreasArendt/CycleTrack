@@ -6,6 +6,7 @@ struct TrackingControlView: View {
     @State private var isSigningIn = false
     @State private var isWritingDummyEntry = false
     @State private var dummyWriteMessage: String?
+    private let userPresenceRepository = UserPresenceRepository()
     
     @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
     @StateObject private var locationManager = LocationManager()
@@ -48,6 +49,7 @@ struct TrackingControlView: View {
             }
         }
         .onAppear {
+            userPresenceRepository.setCurrentUserActive(true)
             locationManager.requestLocationAuthorization()
         }
     }

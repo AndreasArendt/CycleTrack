@@ -30,8 +30,7 @@ struct LiveTrackingIslandView: View {
     
     private let actions = [
         TrackingAction(title: "Share", systemImage: "square.and.arrow.up"),
-        TrackingAction(title: "Start Watching", systemImage: "eye"),
-        TrackingAction(title: "History", systemImage: "clock"),
+        TrackingAction(title: "Add Rider", systemImage: "figure.outdoor.cycle"),
         TrackingAction(title: "Settings", systemImage: "gearshape"),
     ]
 

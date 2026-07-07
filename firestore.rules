@@ -20,5 +20,10 @@ service cloud.firestore {
     match /riderLocations/{riderId} {
       allow read, write: if isOwner(riderId);
     }
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isOwner(userId);
+    }
   }
 }
