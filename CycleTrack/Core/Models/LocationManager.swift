@@ -2,6 +2,36 @@ import Combine
 import CoreLocation
 import Foundation
 
+enum LocationUpdateProfile {
+    case fixedTenSeconds
+    case adaptive
+
+    func interval(activeWatcherCount: Int) -> TimeInterval {
+        switch self {
+        case .fixedTenSeconds:
+            return 10
+        case .adaptive:
+            return activeWatcherCount > 0 ? 10 : 30
+        }
+    }
+
+    func desiredAccuracy(activeWatcherCount: Int) -> CLLocationAccuracy {
+        switch self {
+        case .fixedTenSeconds, .adaptive:
+            return activeWatcherCount > 0 ? kCLLocationAccuracyNearestTenMeters : kCLLocationAccuracyHundredMeters
+        }
+    }
+
+    func distanceFilter(activeWatcherCount: Int) -> CLLocationDistance {
+        switch self {
+        case .fixedTenSeconds:
+            return activeWatcherCount > 0 ? 10 : 50
+        case .adaptive:
+            return activeWatcherCount > 0 ? 10 : 50
+        }
+    }
+}
+
 final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private let activityRepository: ActivityRepository
@@ -12,9 +42,12 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     private var accumulatedTrackingSeconds: TimeInterval = 0
     private var shouldStartSendingAfterAuthorization = false
     private var isCreatingActivity = false
+    private var shouldSendNextLocationUpdate = false
+    private var activeWatcherCount = 0
 
     @Published var currentLocation: CLLocation?
     @Published var currentActivityId: String?
+    @Published var updateProfile: LocationUpdateProfile = .fixedTenSeconds
     @Published var hasGPSFix = false
     @Published var horizontalAccuracy: CLLocationAccuracy?
     @Published var isSending = false
@@ -52,8 +85,8 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         super.init()
 
         manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyBest
         manager.pausesLocationUpdatesAutomatically = true
+        applyUpdateProfile()
         authorizationStatus = preview ? .authorizedWhenInUse : manager.authorizationStatus
     }
 
@@ -70,12 +103,30 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
             requestWhenInUseAuthorizationOnMain()
             statusMessage = "Requesting location permission..."
         case .authorizedWhenInUse, .authorizedAlways:
-            manager.startUpdatingLocation()
+            manager.requestLocation()
         case .denied, .restricted:
             statusMessage = "Location permission denied. Enable it in Settings."
         @unknown default:
             statusMessage = "Unknown authorization status."
         }
+    }
+
+    func setUpdateProfile(_ profile: LocationUpdateProfile) {
+        updateProfile = profile
+        applyUpdateProfile()
+
+        guard isSending else { return }
+
+        scheduleSendTimer()
+    }
+
+    func setActiveWatcherCount(_ count: Int) {
+        activeWatcherCount = max(0, count)
+        applyUpdateProfile()
+
+        guard isSending, updateProfile == .adaptive else { return }
+
+        scheduleSendTimer()
     }
 
     func startSending() {
@@ -112,6 +163,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         shouldStartSendingAfterAuthorization = false
         isSending = false
         isPaused = false
+        shouldSendNextLocationUpdate = false
         sendTimer?.invalidate()
         sendTimer = nil
         let activityId = currentActivityId
@@ -134,6 +186,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
         isPaused = true
         isSending = false
+        shouldSendNextLocationUpdate = false
         sendTimer?.invalidate()
         sendTimer = nil
         pauseDurationTimer()
@@ -186,25 +239,12 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
             requestAlwaysAuthorizationIfNeeded()
         }
 
-        manager.startUpdatingLocation()
-
-        if CLLocationManager.locationServicesEnabled(),
-           manager.responds(to: #selector(CLLocationManager.requestLocation)) {
-            manager.requestLocation()
-        }
-
         isSending = true
         isPaused = false
         startDurationTimer()
-        statusMessage = "Started sending every 10s."
-        sendTimer?.invalidate()
-        sendTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
-            self?.sendCurrentLocation()
-        }
-
-        if let sendTimer {
-            RunLoop.main.add(sendTimer, forMode: .common)
-        }
+        statusMessage = "Started sending every \(Int(currentUpdateInterval))s."
+        requestLocationForSending()
+        scheduleSendTimer()
     }
 
     private func createActivityAndBeginSending() {
@@ -243,6 +283,45 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         }
 
         sendLocation(currentLocation)
+    }
+
+    private var currentUpdateInterval: TimeInterval {
+        updateProfile.interval(activeWatcherCount: activeWatcherCount)
+    }
+
+    private func scheduleSendTimer() {
+        sendTimer?.invalidate()
+        sendTimer = Timer.scheduledTimer(withTimeInterval: currentUpdateInterval, repeats: true) { [weak self] _ in
+            self?.requestLocationForSending()
+        }
+
+        if let sendTimer {
+            RunLoop.main.add(sendTimer, forMode: .common)
+        }
+    }
+
+    private func requestLocationForSending() {
+        guard !shouldSendNextLocationUpdate else { return }
+
+        guard !isPreview else {
+            sendCurrentLocation()
+            return
+        }
+
+        guard CLLocationManager.locationServicesEnabled(),
+              manager.responds(to: #selector(CLLocationManager.requestLocation))
+        else {
+            sendCurrentLocation()
+            return
+        }
+
+        shouldSendNextLocationUpdate = true
+        manager.requestLocation()
+    }
+
+    private func applyUpdateProfile() {
+        manager.desiredAccuracy = updateProfile.desiredAccuracy(activeWatcherCount: activeWatcherCount)
+        manager.distanceFilter = updateProfile.distanceFilter(activeWatcherCount: activeWatcherCount)
     }
 
     private func sendLocation(_ location: CLLocation) {
@@ -345,8 +424,6 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
             if shouldStartSendingAfterAuthorization {
                 shouldStartSendingAfterAuthorization = false
                 createActivityAndBeginSending()
-            } else if isSending {
-                manager.startUpdatingLocation()
             }
 
             if allowsBackgroundUpdates && authorizationStatus == .authorizedWhenInUse {
@@ -368,12 +445,14 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
         updateLocationState(with: latest)
 
-        if isSending {
-            sendLocation(latest)
-        }
+        guard shouldSendNextLocationUpdate, isSending else { return }
+
+        shouldSendNextLocationUpdate = false
+        sendLocation(latest)
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        shouldSendNextLocationUpdate = false
         statusMessage = "Location error: \(error.localizedDescription)"
     }
 

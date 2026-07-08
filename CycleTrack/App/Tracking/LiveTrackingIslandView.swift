@@ -145,6 +145,9 @@ struct LiveTrackingIslandView: View {
         .onChange(of: locationManager.currentActivityId) { _, activityId in
             trackingManager.observeWatchers(activityId: activityId)
         }
+        .onReceive(trackingManager.$watchers) { watchers in
+            locationManager.setActiveWatcherCount(watchers.filter(\.isActive).count)
+        }
     }
 
     private var expandedContent: some View {

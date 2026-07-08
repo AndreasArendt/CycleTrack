@@ -15,6 +15,7 @@ final class ActivityWatchManager: ObservableObject {
 
     #if canImport(FirebaseFirestore)
     private var listeners: [String: ListenerRegistration] = [:]
+    private var watcherListeners: [String: ListenerRegistration] = [:]
     #endif
 
     deinit {
@@ -23,6 +24,7 @@ final class ActivityWatchManager: ObservableObject {
             setCurrentUserWatcherActive(false, activityId: activityId)
         }
         listeners.values.forEach { $0.remove() }
+        watcherListeners.values.forEach { $0.remove() }
         #endif
     }
 
@@ -55,8 +57,34 @@ final class ActivityWatchManager: ObservableObject {
     }
 
     private func startListening(to activityId: String) {
-        #if canImport(FirebaseFirestore)
+        #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
+        guard let user = Auth.auth().currentUser else {
+            statusMessage = ActivityRepositoryError.notAuthenticated.localizedDescription
+            return
+        }
+
         watchedActivities.append(WatchedActivity(id: activityId, ownerUid: nil, status: "loading", coordinate: nil))
+
+        watcherListeners[activityId] = Firestore.firestore()
+            .collection("activities")
+            .document(activityId)
+            .collection("watchers")
+            .document(user.uid)
+            .addSnapshotListener { [weak self] snapshot, error in
+                DispatchQueue.main.async {
+                    if let error {
+                        self?.removeWatchedActivity(id: activityId)
+                        self?.statusMessage = "Stopped watching: \(error.localizedDescription)"
+                        return
+                    }
+
+                    guard let snapshot, snapshot.exists else {
+                        self?.removeWatchedActivity(id: activityId)
+                        self?.statusMessage = "You were removed from this activity."
+                        return
+                    }
+                }
+            }
 
         listeners[activityId] = Firestore.firestore()
             .collection("activities")
@@ -64,7 +92,8 @@ final class ActivityWatchManager: ObservableObject {
             .addSnapshotListener { [weak self] snapshot, error in
                 DispatchQueue.main.async {
                     if let error {
-                        self?.statusMessage = "Failed to watch activity: \(error.localizedDescription)"
+                        self?.removeWatchedActivity(id: activityId)
+                        self?.statusMessage = "Stopped watching: \(error.localizedDescription)"
                         return
                     }
 
@@ -117,17 +146,40 @@ final class ActivityWatchManager: ObservableObject {
 
     private func parseInvitationToken(_ rawToken: String) -> ActivityInvitationToken? {
         let token = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        let separators = CharacterSet(charactersIn: "#:")
-        let parts = token.components(separatedBy: separators)
+        let candidates = [token] + token.components(separatedBy: .whitespacesAndNewlines)
 
-        guard parts.count == 2,
-              !parts[0].isEmpty,
-              !parts[1].isEmpty
-        else {
+        for candidate in candidates {
+            if let invitation = parseCompactInvitationToken(candidate, separator: "#") {
+                return invitation
+            }
+        }
+
+        guard !token.contains(" ") else { return nil }
+
+        return parseCompactInvitationToken(token, separator: ":")
+    }
+
+    private func parseCompactInvitationToken(_ token: String, separator: Character) -> ActivityInvitationToken? {
+        let parts = token
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: separator, omittingEmptySubsequences: true)
+
+        guard parts.count == 2 else {
             return nil
         }
 
-        return ActivityInvitationToken(activityId: parts[0], invitationId: parts[1])
+        return ActivityInvitationToken(activityId: String(parts[0]), invitationId: String(parts[1]))
+    }
+
+    private func removeWatchedActivity(id: String) {
+        #if canImport(FirebaseFirestore)
+        listeners[id]?.remove()
+        listeners[id] = nil
+        watcherListeners[id]?.remove()
+        watcherListeners[id] = nil
+        #endif
+
+        watchedActivities.removeAll { $0.id == id }
     }
 
     private func updateWatchedActivity(id: String, data: [String: Any]) {
