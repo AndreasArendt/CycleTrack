@@ -36,6 +36,7 @@ struct LiveTrackingIslandView: View {
     let watchedActivities: [WatchedActivity]
     let watchingStatusMessage: String?
     let onAddActivity: () -> Void
+    let onRemoveWatchedActivity: (WatchedActivity) -> Void
     
     private let actions = [
         TrackingAction(title: "Share", systemImage: "square.and.arrow.up"),
@@ -46,12 +47,14 @@ struct LiveTrackingIslandView: View {
         locationManager: LocationManager,
         watchedActivities: [WatchedActivity] = [],
         watchingStatusMessage: String? = nil,
-        onAddActivity: @escaping () -> Void = {}
+        onAddActivity: @escaping () -> Void = {},
+        onRemoveWatchedActivity: @escaping (WatchedActivity) -> Void = { _ in }
     ) {
         self.locationManager = locationManager
         self.watchedActivities = watchedActivities
         self.watchingStatusMessage = watchingStatusMessage
         self.onAddActivity = onAddActivity
+        self.onRemoveWatchedActivity = onRemoveWatchedActivity
     }
 
     var body: some View {
@@ -214,7 +217,8 @@ struct LiveTrackingIslandView: View {
             WatchingOthersSectionView(
                 watchedActivities: watchedActivities,
                 statusMessage: watchingStatusMessage,
-                onAddActivity: onAddActivity
+                onAddActivity: onAddActivity,
+                onRemoveActivity: onRemoveWatchedActivity
             )
         }
     }
@@ -316,6 +320,7 @@ private struct WatchingOthersSectionView: View {
     let watchedActivities: [WatchedActivity]
     let statusMessage: String?
     let onAddActivity: () -> Void
+    let onRemoveActivity: (WatchedActivity) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -349,7 +354,9 @@ private struct WatchingOthersSectionView: View {
             } else {
                 VStack(spacing: 8) {
                     ForEach(watchedActivities) { activity in
-                        watchedActivityRow(activity)
+                        SwipeToRemoveWatchedActivityRow(activity: activity) {
+                            onRemoveActivity(activity)
+                        }
                     }
                 }
                 .padding(10)
@@ -364,8 +371,53 @@ private struct WatchingOthersSectionView: View {
             }
         }
     }
+}
 
-    private func watchedActivityRow(_ activity: WatchedActivity) -> some View {
+private struct SwipeToRemoveWatchedActivityRow: View {
+    let activity: WatchedActivity
+    let onRemove: () -> Void
+
+    @State private var offset: CGFloat = 0
+
+    private let removeWidth: CGFloat = 76
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            Button(role: .destructive) {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                    onRemove()
+                }
+            } label: {
+                Image(systemName: "trash.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: removeWidth, height: 42)
+                    .background(.red, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
+            watchedActivityRow
+                .padding(.horizontal, 10)
+                .frame(height: 42)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .offset(x: offset)
+                .gesture(
+                    DragGesture(minimumDistance: 12)
+                        .onChanged { value in
+                            offset = max(-removeWidth, min(0, value.translation.width))
+                        }
+                        .onEnded { value in
+                            let shouldReveal = value.translation.width < -34 || value.predictedEndTranslation.width < -70
+
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                                offset = shouldReveal ? -removeWidth : 0
+                            }
+                        }
+                )
+        }
+        .clipped()
+    }
+
+    private var watchedActivityRow: some View {
         HStack(spacing: 10) {
             Image(systemName: "figure.outdoor.cycle")
                 .font(.caption.weight(.semibold))
@@ -391,7 +443,6 @@ private struct WatchingOthersSectionView: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(activity.status == "live" ? .green : .secondary)
         }
-        .frame(height: 42)
     }
 }
 

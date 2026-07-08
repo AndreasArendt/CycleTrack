@@ -56,6 +56,35 @@ final class ActivityWatchManager: ObservableObject {
         #endif
     }
 
+    func stopWatching(_ activity: WatchedActivity) {
+        #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
+        guard let user = Auth.auth().currentUser else {
+            removeWatchedActivity(id: activity.id)
+            statusMessage = ActivityRepositoryError.notAuthenticated.localizedDescription
+            return
+        }
+
+        removeWatchedActivity(id: activity.id)
+
+        Firestore.firestore()
+            .collection("activities")
+            .document(activity.id)
+            .collection("watchers")
+            .document(user.uid)
+            .delete { [weak self] error in
+                DispatchQueue.main.async {
+                    if let error {
+                        self?.statusMessage = "Failed to stop watching: \(error.localizedDescription)"
+                    } else {
+                        self?.statusMessage = "Stopped watching."
+                    }
+                }
+            }
+        #else
+        removeWatchedActivity(id: activity.id)
+        #endif
+    }
+
     private func startListening(to activityId: String) {
         #if canImport(FirebaseAuth) && canImport(FirebaseFirestore)
         guard let user = Auth.auth().currentUser else {

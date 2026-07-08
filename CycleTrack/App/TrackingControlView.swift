@@ -59,6 +59,8 @@ struct TrackingControlView: View {
                     watchingStatusMessage: activityWatchManager.statusMessage
                 ) {
                     isAddingActivity = true
+                } onRemoveWatchedActivity: { activity in
+                    activityWatchManager.stopWatching(activity)
                 }
                     .padding(.horizontal, 16)
             }
