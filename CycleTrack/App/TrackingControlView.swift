@@ -61,7 +61,6 @@ struct TrackingControlView: View {
                     isAddingActivity = true
                 }
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
             }
         }
         .onAppear {

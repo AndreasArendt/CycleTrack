@@ -70,7 +70,7 @@ struct LiveTrackingIslandView: View {
                     .background((selectedPage == .myTracking ? Color.green : Color.blue).opacity(0.14), in: Circle())
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(selectedPage == .myTracking ? "Live Tracking" : "Tracking Others")
+                    Text(selectedPage == .myTracking ? "Live Tracking" : "Tracking Riders")
                         .font(.headline)
 
                     Text(selectedPage == .myTracking ? trackingStatusText : watchingStatusText)
@@ -191,12 +191,9 @@ struct LiveTrackingIslandView: View {
             }
 
             HStack {
-                Label("Last update", systemImage: "dot.radiowaves.left.and.right")
-                    .foregroundStyle(.secondary)
-
                 Spacer()
 
-                Text(locationManager.hasGPSFix ? "Tracking" : "Waiting for Position")
+                Text(locationManager.hasGPSFix ? "" : "Waiting for Position")
                     .foregroundStyle(locationManager.hasGPSFix ? .green : .secondary)
             }
             .font(.caption)
@@ -216,26 +213,15 @@ struct LiveTrackingIslandView: View {
                 statusMessage: watchingStatusMessage,
                 onAddActivity: onAddActivity
             )
-
-            HStack {
-                Label("More", systemImage: "ellipsis.circle")
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Text("Coming soon")
-                    .foregroundStyle(.secondary)
-            }
-            .font(.caption)
         }
     }
 
     private var pageSwitcher: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
             pageButton(page: .myTracking, systemImage: "location.fill")
             pageButton(page: .watchingOthers, systemImage: "figure.outdoor.cycle")
         }
-        .padding(4)
+        .padding(3)
         .background(.thinMaterial, in: Capsule())
     }
 
@@ -247,10 +233,13 @@ struct LiveTrackingIslandView: View {
             }
         } label: {
             Image(systemName: systemImage)
-                .font(.caption.weight(.semibold))
+                .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(selectedPage == page ? .white : .secondary)
-                .frame(width: 34, height: 26)
-                .background(selectedPage == page ? Color.accentColor : Color.clear, in: Capsule())
+                .frame(width: 42, height: 34)
+                .background(
+                    selectedPage == page ? Color.accentColor : .clear,
+                    in: Capsule()
+                )
         }
         .buttonStyle(.plain)
     }
@@ -264,7 +253,7 @@ struct LiveTrackingIslandView: View {
             return "Paused at \(locationManager.trackingDurationText)"
         }
 
-        return "Ready to share"
+        return "Start sharing"
     }
 
     private var watchingStatusText: String {
@@ -328,22 +317,9 @@ private struct WatchingOthersSectionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("Riders I Track", systemImage: "map")
+                Label("Riders", systemImage: "map")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Button {
-                    onAddActivity()
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.caption.weight(.bold))
-                        .frame(width: 28, height: 28)
-                        .background(.blue, in: Circle())
-                        .foregroundStyle(.white)
-                }
-                .buttonStyle(.plain)
             }
 
             if watchedActivities.isEmpty {

@@ -21,37 +21,8 @@ struct SharingView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let activityId {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Invitation")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-
-                    Text(invitationToken ?? activityId)
-                        .font(.caption.monospaced())
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-
-                    if let statusText {
-                        Text(statusText)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            } else {
-                Text("Start live tracking to create an activity link.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-
             HStack {
-                let linkAction = TrackingAction(title: "Link", systemImage: "link.circle")
+                let linkAction = TrackingAction(title: "Link", systemImage: "link")
                 CycleTrackActionButton(action: linkAction) {
                     copyShareText()
                 }

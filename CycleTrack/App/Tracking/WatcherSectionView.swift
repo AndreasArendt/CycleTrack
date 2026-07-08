@@ -148,3 +148,7 @@ private struct SwipeToRemoveWatcherRow: View {
         }
     }
 }
+
+#Preview {
+    WatcherSectionView(watchers: [], onRemoveWatcher: { _ in })
+}

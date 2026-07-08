@@ -21,11 +21,11 @@ struct SlideToStopControl: View {
 
                 Text("Slide to stop sharing")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.red.opacity(0.85))
                     .frame(maxWidth: .infinity)
 
                 Circle()
-                    .fill(.red)
+                    .fill(.red.opacity(0.85))
                     .frame(width: knobSize, height: knobSize)
                     .overlay {
                         Image(systemName: "stop.fill")
@@ -52,4 +52,8 @@ struct SlideToStopControl: View {
         }
         .frame(height: 52)
     }
+}
+
+#Preview {
+    SlideToStopControl(stopSliderOffset: 0, onStop:  {})
 }
