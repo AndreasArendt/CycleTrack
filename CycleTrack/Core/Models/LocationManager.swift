@@ -43,6 +43,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     private var shouldStartSendingAfterAuthorization = false
     private var isCreatingActivity = false
     private var shouldSendNextLocationUpdate = false
+    private var lastLocationSentAt: Date?
     private var activeWatcherCount = 0
 
     @Published var currentLocation: CLLocation?
@@ -55,7 +56,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     @Published var elapsedTrackingSeconds: TimeInterval = 0
     @Published var statusMessage: String?
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
-    @Published var allowsBackgroundUpdates = false {
+    @Published var allowsBackgroundUpdates = true {
         didSet {
             updateBackgroundLocationUpdates()
 
@@ -85,9 +86,11 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         super.init()
 
         manager.delegate = self
+        manager.activityType = .fitness
         manager.pausesLocationUpdatesAutomatically = true
         applyUpdateProfile()
         authorizationStatus = preview ? .authorizedWhenInUse : manager.authorizationStatus
+        updateBackgroundLocationUpdates()
     }
 
     deinit {
@@ -164,6 +167,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         isSending = false
         isPaused = false
         shouldSendNextLocationUpdate = false
+        lastLocationSentAt = nil
         sendTimer?.invalidate()
         sendTimer = nil
         let activityId = currentActivityId
@@ -171,6 +175,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         resetDurationTimer()
 
         if !isPreview {
+            manager.pausesLocationUpdatesAutomatically = true
             manager.stopUpdatingLocation()
         }
 
@@ -192,6 +197,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         pauseDurationTimer()
 
         if !isPreview {
+            manager.pausesLocationUpdatesAutomatically = true
             manager.stopUpdatingLocation()
         }
 
@@ -243,7 +249,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         isPaused = false
         startDurationTimer()
         statusMessage = "Started sending every \(Int(currentUpdateInterval))s."
-        requestLocationForSending()
+        startLocationUpdatesForTracking()
         scheduleSendTimer()
     }
 
@@ -330,6 +336,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
             return
         }
 
+        lastLocationSentAt = Date()
         activityRepository.updateLiveActivityLocation(activityId: currentActivityId, location: location) { [weak self] error in
             DispatchQueue.main.async {
                 if let error {
@@ -345,6 +352,32 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         currentLocation = location
         horizontalAccuracy = location.horizontalAccuracy
         hasGPSFix = location.horizontalAccuracy > 0 && location.horizontalAccuracy < 20
+    }
+
+    private func startLocationUpdatesForTracking() {
+        guard !isPreview else {
+            sendCurrentLocation()
+            return
+        }
+
+        shouldSendNextLocationUpdate = true
+        updateBackgroundLocationUpdates()
+        manager.pausesLocationUpdatesAutomatically = false
+        manager.startUpdatingLocation()
+    }
+
+    private func shouldSendLocationUpdate() -> Bool {
+        guard isSending else { return false }
+
+        if shouldSendNextLocationUpdate {
+            return true
+        }
+
+        guard let lastLocationSentAt else {
+            return true
+        }
+
+        return Date().timeIntervalSince(lastLocationSentAt) >= currentUpdateInterval
     }
 
     private func startDurationTimer() {
@@ -445,7 +478,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
         updateLocationState(with: latest)
 
-        guard shouldSendNextLocationUpdate, isSending else { return }
+        guard shouldSendLocationUpdate() else { return }
 
         shouldSendNextLocationUpdate = false
         sendLocation(latest)

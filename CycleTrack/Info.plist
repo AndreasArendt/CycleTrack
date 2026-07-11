@@ -3,8 +3,12 @@
 <plist version="1.0">
 <dict>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>CycleTrack uses your location to record rides while tracking is active.</string>
+	<string>CycleTrack uses your location to record rides while tracking is active, including when the app is in the background.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>CycleTrack uses your location to record rides while tracking is active.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 </dict>
 </plist>
